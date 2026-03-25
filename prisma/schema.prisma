@@ -1,0 +1,202 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  LEETCODE
+  CODEFORCES
+  ATCODER
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum DeliveryChannel {
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model UserProfile {
+  id                 String                 @id @default(cuid())
+  authUserId         String                 @unique
+  email              String?
+  displayName        String?
+  displayNameEditedAt DateTime?
+  avatarUrl          String?
+  timezone           String                 @default("UTC")
+  onboardingComplete Boolean                @default(false)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  preferences        UserPreference?
+  platformAccounts   PlatformAccount[]
+  snapshots          PlatformSnapshot[]
+  submissions        SubmissionEvent[]
+  dailyChallenges    DailyChallengeSnapshot[]
+  notifications      NotificationDelivery[]
+  syncRuns           SyncRun[]
+  reminderStates     ContestReminderState[]
+}
+
+model PlatformAccount {
+  id             String      @id @default(cuid())
+  userId         String
+  platform       Platform
+  handle         String
+  verified       Boolean     @default(false)
+  linkedAt       DateTime?
+  lastSyncedAt   DateTime?
+  rawProfileJson Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+}
+
+model UserPreference {
+  id                  String      @id @default(cuid())
+  userId              String      @unique
+  dailyProblemEnabled Boolean     @default(true)
+  streakReminder      Boolean     @default(true)
+  contestReminder     Boolean     @default(true)
+  liveContestAlert    Boolean     @default(false)
+  sidebarShowcasePlatform Platform @default(LEETCODE)
+  solveTime           String      @default("20:00")
+  streakCheckTime     String      @default("22:30")
+  timezone            String      @default("UTC")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  user                UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Contest {
+  id             String    @id
+  platform       Platform
+  externalId     String
+  title          String
+  slug           String?
+  division       String?
+  difficultyTag  String?
+  startsAtUtc    DateTime
+  durationMins   Int
+  registrationUrl String?
+  rawJson        Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  reminderStates ContestReminderState[]
+
+  @@unique([platform, externalId])
+}
+
+model ContestReminderState {
+  id                 String      @id @default(cuid())
+  userId             String
+  contestId          String
+  t24ReminderSentAt  DateTime?
+  liveReminderSentAt DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  user               UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contest            Contest     @relation(fields: [contestId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contestId])
+}
+
+model PlatformSnapshot {
+  id            String      @id @default(cuid())
+  userId        String
+  platform      Platform
+  snapshotType  String
+  title         String
+  payload       Json
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  syncedAtUtc   DateTime?
+  user          UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, platform, snapshotType])
+}
+
+model SubmissionEvent {
+  id              String      @id @default(cuid())
+  userId          String
+  platform        Platform
+  externalId      String
+  title           String
+  verdict         String
+  runtimeLabel    String?
+  memoryLabel     String?
+  languageLabel   String?
+  submittedAtUtc  DateTime
+  rawJson         Json?
+  createdAt       DateTime    @default(now())
+  user            UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, externalId, userId])
+  @@index([userId, platform, submittedAtUtc])
+}
+
+model DailyChallengeSnapshot {
+  id             String      @id @default(cuid())
+  userId         String
+  challengeDate  DateTime
+  title          String
+  difficulty     String
+  acceptanceRate String?
+  url            String?
+  solved         Boolean     @default(false)
+  platform       Platform     @default(LEETCODE)
+  rawJson        Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeDate, platform])
+}
+
+model NotificationDelivery {
+  id          String         @id @default(cuid())
+  userId      String
+  channel     DeliveryChannel
+  deliveryKey String         @unique
+  kind        String
+  subject     String
+  payload     Json
+  status      DeliveryStatus @default(PENDING)
+  sentAt      DateTime?
+  error       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        UserProfile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SyncRun {
+  id           String      @id @default(cuid())
+  userId       String
+  platform     Platform?
+  status       SyncStatus  @default(PENDING)
+  trigger      String
+  details      Json?
+  startedAtUtc DateTime?
+  finishedAtUtc DateTime?
+  error        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
